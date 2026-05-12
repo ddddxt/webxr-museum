@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>XR虚拟展厅</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="info">
+        XR虚拟展厅
+        <span id="vr-status"></span>
+    </div>
+    <button id="vr-btn">进入 VR 模式</button>
+    <div id="instructions">
+        💡点击画面后锁定鼠标，即可用 WASD 移动<br>
+        VR模式：戴上头显后自动追踪头部，键盘仍可移动
+    </div>
+
+    
+    <video id="museum-video" 
+           crossOrigin="anonymous" 
+           playsinline 
+           muted 
+           loop 
+           style="display:none;">
+        <source src="video/vi.mp4" type="video/mp4">
+        你的浏览器不支持 MP4 视频。
+    </video>
+
+        <div id="canvas-container"></div>
+
+    <!-- 引入 Three.js 及相关扩展 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
