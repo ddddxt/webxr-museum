@@ -7,6 +7,15 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 
+const loader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('./draco/');
+
+// 3. 把 Draco 解压器绑到 GLTF 加载器上（新增）
+
+
+loader.setDRACOLoader(dracoLoader);
+//loader.setMeshoptDecoder(MeshoptDecoder);
 
 // ==================== 诊断面板 ====================
 const debugDiv = document.createElement('div');
@@ -397,35 +406,23 @@ function wrapText(ctx, text, x, y, maxW, lineHeight) {
 }
 
 // ==================== 加载模型 ====================
-// ==================== 加载模型 ====================
-const loader = new GLTFLoader();
-
-// 【新增】Draco 解码器设置
-const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('./draco/');
-loader.setDRACOLoader(dracoLoader);
-
-// 【新增】Meshopt 解码器设置（如果你用了 meshopt 压缩）
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-loader.setMeshoptDecoder(MeshoptDecoder);
-
-// 【新增】获取页面上的加载状态面板元素
+// 获取加载面板元素（新增）
 const loadingText = document.getElementById('loading-text');
 const loadingDetail = document.getElementById('loading-detail');
 const loadingPanel = document.getElementById('loading-panel');
 
 loader.load('models/ex.glb',
-    // ========== 第 1 个回调：加载成功 ==========
+    // ========== 1. 加载成功 ==========
     (gltf) => {
-        loadingText.textContent = '✅ 模型加载完成！';
-        loadingDetail.textContent = '正在添加到场景...';
+        loadingText.textContent = '✅ 模型加载完成';
+        loadingDetail.textContent = '正在渲染场景...';
         
         const model = gltf.scene;
         model.position.set(0, 0, 0);
         model.scale.set(1, 1, 1);
         scene.add(model);
 
-        // 你原来的所有 traverse 代码不动，继续放在这里
+
         const allMeshNames = [];
         model.traverse(c => {
             if (c.isMesh) {
@@ -500,39 +497,48 @@ loader.load('models/ex.glb',
         }
 
         console.log(`模型加载完成，共 ${artifactItems.length} 个文物`);
+    },
+    (xhr) => {
+ //       if (xhr.total) console.log(`加载进度: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`);
+   // },
+   // (err) => console.error('模型加载失败:', err)
 
-        // 过 2 秒后隐藏加载面板
+ // 2秒后隐藏加载面板
         setTimeout(() => {
             loadingPanel.style.display = 'none';
         }, 2000);
     },
 
-    // ========== 第 2 个回调：加载进度 ==========
+    // ========== 2. 加载进度（新增）==========
     (xhr) => {
         if (xhr.total) {
             const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
             loadingText.textContent = `⏳ 加载模型... ${percent}%`;
-            loadingDetail.textContent = `已下载 ${(xhr.loaded/1024/1024).toFixed(1)} MB / 共 ${(xhr.total/1024/1024).toFixed(1)} MB`;
+            loadingDetail.textContent = `${(xhr.loaded/1024/1024).toFixed(1)} MB / ${(xhr.total/1024/1024).toFixed(1)} MB`;
         } else {
-            loadingText.textContent = '⏳ 加载中... (进度未知)';
+            loadingText.textContent = '⏳ 加载中...';
         }
     },
 
-    // ========== 第 3 个回调：加载失败 ==========
+    // ========== 3. 加载失败（新增）==========
     (err) => {
-        loadingText.textContent = '❌ 模型加载失败';
+        loadingText.textContent = '❌ 加载失败';
         loadingText.style.color = '#ff4444';
         
         let msg = err.message || '未知错误';
         if (msg.includes('DRACO')) msg = 'Draco 解码器失败';
-        if (msg.includes('404')) msg = '文件找不到 (404)';
-        if (msg.includes('Meshopt')) msg = 'Meshopt 压缩不支持';
+        if (msg.includes('404')) msg = '模型文件找不到';
+        if (msg.includes('Meshopt')) msg = 'Meshopt 不支持';
+        if (msg.includes('TIMEOUT') || msg.includes('TIMED_OUT')) msg = '网络超时，请检查模型路径';
+        
         loadingDetail.textContent = `错误：${msg}`;
         loadingDetail.style.color = '#ff6666';
         
         console.error('完整错误:', err);
     }
+
 );
+
 // ==================== 辅助函数：从指定手柄读取摇杆 ====================
 function getStickFromController(controller) {
     // 尝试从该手柄的 gamepad 获取摇杆数据
