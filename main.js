@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+
 
 
 // ==================== 诊断面板 ====================
@@ -40,8 +43,8 @@ function initVRDebug() {
 
 // ==================== 基础场景 ====================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xfcfdec);
-scene.fog = new THREE.FogExp2(0x050b1a, 0.008);
+scene.background = new THREE.Color(0x000000);
+//scene.fog = new THREE.FogExp2(0x050b1a, 0.008);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 1.6, 5);
@@ -395,7 +398,8 @@ function wrapText(ctx, text, x, y, maxW, lineHeight) {
 
 // ==================== 加载模型 ====================
 const loader = new GLTFLoader();
-loader.load('models/博物馆test3.0.glb',
+loader.setMeshoptDecoder(MeshoptDecoder);
+loader.load('models/exhibition.glb',
     (gltf) => {
         const model = gltf.scene;
         model.position.set(0, 0, 0);
