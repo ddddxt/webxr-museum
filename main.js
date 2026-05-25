@@ -399,7 +399,7 @@ function wrapText(ctx, text, x, y, maxW, lineHeight) {
 // ==================== 加载模型 ====================
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
-loader.load('models/exhibition.glb',
+loader.load('models/博物馆test3.0.glb',
     (gltf) => {
         const model = gltf.scene;
         model.position.set(0, 0, 0);
