@@ -1,12 +1,21 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+//import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 
+const loader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+
+// 3. 把 Draco 解压器绑到 GLTF 加载器上（新增）
 
 
+loader.setDRACOLoader(dracoLoader);
+//loader.setMeshoptDecoder(MeshoptDecoder);
 
 // ==================== 诊断面板 ====================
 const debugDiv = document.createElement('div');
@@ -397,8 +406,9 @@ function wrapText(ctx, text, x, y, maxW, lineHeight) {
 }
 
 // ==================== 加载模型 ====================
-const loader = new GLTFLoader();
-loader.setMeshoptDecoder(MeshoptDecoder);
+
+// 2. 创建 Draco 解压器（新增）
+
 loader.load('models/ex.glb',
     (gltf) => {
         const model = gltf.scene;
