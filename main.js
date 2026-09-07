@@ -418,7 +418,7 @@ const loadingText = document.getElementById('loading-text');
 const loadingDetail = document.getElementById('loading-detail');
 const loadingPanel = document.getElementById('loading-panel');
 
-loader.load('models/ex.glb',
+loader.load('models/test.glb',
     // ========== 1. 加载成功 ==========
     (gltf) => {
         loadingText.textContent = '✅ 模型加载完成';
