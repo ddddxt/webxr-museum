@@ -442,6 +442,9 @@ const exhibitionImages = [
         details: [
             './images/bed.jpg',
             './images/bed2.jpg',
+            './images/bed2.jpg',
+            './images/bed2.jpg',
+            './images/bed2.jpg',
            // './images/bed-detail2.jpg'
         ]
     },
@@ -453,6 +456,8 @@ const exhibitionImages = [
         details: [
             './images/chair.jpg',
             './images/chair2.jpg',
+            './images/bed2.jpg',
+            './images/bed2.jpg',
            // './images/image2-detail2.jpg'
         ]
     }
@@ -980,7 +985,7 @@ const loadingText = document.getElementById('loading-text');
 const loadingDetail = document.getElementById('loading-detail');
 const loadingPanel = document.getElementById('loading-panel');
 
-loader.load('models/test.glb',
+loader.load('models/tes.glb',
     // ========== 1. 加载成功 ==========
     (gltf) => {
         loadingText.textContent = '✅ 模型加载完成';
