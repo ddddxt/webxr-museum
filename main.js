@@ -440,6 +440,7 @@ const exhibitionImages = [
 
         // 点击后显示的详情图
         details: [
+            './images/bed.jpg',
             './images/bed2.jpg',
            // './images/bed-detail2.jpg'
         ]
@@ -450,6 +451,7 @@ const exhibitionImages = [
         id: 'image2',
         original: './images/chair.jpg',
         details: [
+            './images/chair.jpg',
             './images/chair2.jpg',
            // './images/image2-detail2.jpg'
         ]
