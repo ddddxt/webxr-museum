@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 //import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
@@ -10,25 +9,18 @@ import { VRButton } from 'three/addons/webxr/VRButton.js';
 const loader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('./draco/');
-
-// 3. 把 Draco 解压器绑到 GLTF 加载器上（新增）
-
-
+// 3. 把 Draco 解压器绑到 GLTF 加载器上
 loader.setDRACOLoader(dracoLoader);
-//loader.setMeshoptDecoder(MeshoptDecoder);
-
 // ==================== 诊断面板 ====================
 const debugDiv = document.createElement('div');
-debugDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.85);color:#00ff00;font-family:monospace;font-size:13px;padding:12px;z-index:9999;pointer-events:none;white-space:pre;line-height:1.6;border-radius:8px;max-width:340px;';
+debugDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(244, 244, 244, 0.85);color:#00ff00;font-family:monospace;font-size:13px;padding:12px;z-index:9999;pointer-events:none;white-space:pre;line-height:1.6;border-radius:8px;max-width:340px;';
 document.body.appendChild(debugDiv);
 let debugLines = [];
 function setDebug(key, value) { debugLines.push(`${key}: ${value}`); }
-
 let debugSprite = null;
 let debugCanvas = null;
 let debugCtx = null;
 let debugTexture = null;
-
 function initVRDebug() {
     debugCanvas = document.createElement('canvas');
     debugCanvas.width = 512;
@@ -49,21 +41,22 @@ function initVRDebug() {
     camera.add(debugSprite);
     debugSprite.visible = false;
 }
-
 // ==================== 基础场景 ====================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
+scene.background = new THREE.Color(	0xf5f5f0);//场景背景颜色
 //scene.fog = new THREE.FogExp2(0x050b1a, 0.008);
-
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 1.6, 5);
 scene.add(camera);
-
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;   // 正确的色彩输出
+renderer.toneMapping = THREE.ACESFilmicToneMapping; // 更自然的色调映射
+renderer.toneMappingExposure = 1.0;
+
 renderer.xr.enabled = true;
 document.body.appendChild(renderer.domElement);
 
@@ -78,27 +71,28 @@ labelRenderer.domElement.style.top = '0px';
 labelRenderer.domElement.style.left = '0px';
 labelRenderer.domElement.style.pointerEvents = 'none';
 document.body.appendChild(labelRenderer.domElement);
-
 // ==================== 视频系统 ====================
 const videoElement = document.getElementById('museum-video');
 const videoTexture = new THREE.VideoTexture(videoElement);
-
 // 视频屏幕
-const screenGeo = new THREE.PlaneGeometry(3.2, 1.8);
+const screenGeo = new THREE.PlaneGeometry(3.2, 1.8, 1);
 const screenMat = new THREE.MeshBasicMaterial({ 
     map: videoTexture,
     side: THREE.DoubleSide
 });
 const videoScreen = new THREE.Mesh(screenGeo, screenMat);
-videoScreen.position.set(0, 2.0, -3);
+// 把 x 改为你要的值：例如 -1 向左，+1 向右（z 保持 -3，不改变远近）
+videoScreen.position.set(-7, 2.3, 2);
+videoScreen.rotation.y = Math.PI / 2;
 scene.add(videoScreen);
-
 // 视频边框
 const borderGeo = new THREE.PlaneGeometry(3.4, 2.0);
 const borderMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
 const videoBorder = new THREE.Mesh(borderGeo, borderMat);
 videoBorder.position.copy(videoScreen.position);
-videoBorder.position.z -= 0.02;
+videoBorder.position.x -= 0.04;
+// 同步边框旋转
+videoBorder.rotation.copy(videoScreen.rotation);
 scene.add(videoBorder);
 
 // 3D 提示文字
@@ -153,25 +147,101 @@ window.addEventListener('keyup', (e) => {
 });
 
 renderer.domElement.addEventListener('click', (event) => {
+
     if (renderer.xr.isPresenting) return;
-    
-    // 计算鼠标在 3D 空间的位置（-1 到 +1）
+
+
+    // ====================
+    // 正在查看图片详情
+    // 鼠标任意点击 = 关闭
+    // ====================
+    if (activeImageViewer) {
+
+        if (!activeImageViewer.isAnimating) {
+            closeImageDetails(activeImageViewer);
+        }
+
+        return;
+    }
+
+
+    // ====================
+    // 正常状态：计算鼠标射线
+    // ====================
+
     const mouse = new THREE.Vector2(
         (event.clientX / window.innerWidth) * 2 - 1,
         -(event.clientY / window.innerHeight) * 2 + 1
     );
-    
-    // 从相机发射射线，检测是否打中视频屏幕
+
     const rc = new THREE.Raycaster();
-    rc.setFromCamera(mouse, camera);
-    const hits = rc.intersectObject(videoScreen);
-    
-    if (hits.length > 0) {
-        toggleVideo();  // 点击视频 -> 播放/暂停
-    } else {
-        controls.lock();  // 点击空白处 -> 锁定鼠标漫游
+
+    rc.setFromCamera(
+        mouse,
+        camera
+    );
+
+
+    // ====================
+    // 视频
+    // ====================
+
+    const videoHits =
+        rc.intersectObject(videoScreen);
+
+    if (videoHits.length > 0) {
+
+        toggleVideo();
+
+        return;
     }
+
+
+    // ====================
+    // 展厅图片
+    // ====================
+
+    const imageMeshes =
+        imageBoards.map(
+            item => item.board
+        );
+
+    const imageHits =
+        rc.intersectObjects(imageMeshes);
+
+    if (imageHits.length > 0) {
+
+        const hitBoard =
+            imageHits[0].object;
+
+        const imageGroup =
+            imageBoards.find(
+                item => item.board === hitBoard
+            );
+
+        if (imageGroup) {
+
+            console.log(
+                '🎯 点击图片:',
+                imageGroup.id
+            );
+
+            openImageDetails(
+                imageGroup
+            );
+
+            return;
+        }
+    }
+
+
+    // ====================
+    // 空白区域
+    // ====================
+
+    controls.lock();
 });
+
 
 controls.addEventListener('lock', () => {
     const el = document.getElementById('instructions');
@@ -311,43 +381,534 @@ document.getElementById('vr-btn').addEventListener('click', async () => {
     }
 });
 
-// ==================== 灯光 ====================
-const ambientLight = new THREE.AmbientLight(0x404060, 0.8);
+// ==================== 灯光系统（无天花板展厅均匀照明）====================
+
+// 基础环境光：高亮度中性白，保证室内整体明亮无死黑
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
-dirLight.position.set(5, 12, 4);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(1024, 1024);
-dirLight.shadow.camera.near = 0.5;
-dirLight.shadow.camera.far = 20;
-dirLight.shadow.camera.left = -8;
-dirLight.shadow.camera.right = 8;
-dirLight.shadow.camera.top = 8;
-dirLight.shadow.camera.bottom = -8;
+// 半球光：模拟天空/地面自然漫射，上亮下暗的柔和过渡
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+hemiLight.position.set(0, 10, 0);
+scene.add(hemiLight);
+
+// 主漫射光（模拟天窗自然光）：从上方均匀洒下，不产生硬阴影
+const dirLight = new THREE.DirectionalLight(0xfffaf0, 0.8);
+dirLight.position.set(2, 8, 3);
+dirLight.castShadow = false;  // 展厅内几乎无阴影
 scene.add(dirLight);
 
-const backLight = new THREE.PointLight(0xcc8855, 0.5);
-backLight.position.set(-3, 2, -4);
-scene.add(backLight);
+// 室内补光1：左侧墙壁反射光
+const fillLight1 = new THREE.PointLight(0xfff5e8, 0.4);
+fillLight1.position.set(-4, 3, 0);
+scene.add(fillLight1);
 
-const fillLight = new THREE.PointLight(0x4488ff, 0.4);
-fillLight.position.set(4, 3, 5);
-scene.add(fillLight);
+// 室内补光2：右侧墙壁反射光
+const fillLight2 = new THREE.PointLight(0xfff5e8, 0.4);
+fillLight2.position.set(4, 3, 0);
+scene.add(fillLight2);
 
+// 室内补光3：深处补光，避免走廊/深处变暗
+const deepLight = new THREE.PointLight(0xfff0e0, 0.3);
+deepLight.position.set(0, 3, -6);
+scene.add(deepLight);
+
+// 外部暗角光：从展厅外缘打冷暗光，形成"外暗内亮"的空间层次
+const outerDarkLight = new THREE.PointLight(0x334455, 0.2);
+outerDarkLight.position.set(8, 2, 8);
+scene.add(outerDarkLight);
+
+// 网格辅助线
 const gridHelper = new THREE.GridHelper(20, 20, 0x88aaff, 0x4466aa);
 gridHelper.position.y = -0.5;
 scene.add(gridHelper);
-
-const smLight = new THREE.PointLight(0xcc8855, 0.5);
-smLight.position.set(7, -1, 0);
-scene.add(smLight);
 
 // ==================== 文物数据 ====================
 let artifactsInfo = {
     Mesh_0: { name: "螺钿云龙纹圆盒", era: "清代·乾隆年制", collectionId: "M00123", description: "盒面嵌螺钿云龙纹，片片贝母流光溢彩。" },
     Mesh_0001: { name: "螺钿人物故事长方盒", era: "明代·天启年间", collectionId: "M00456", description: "描绘《西厢记》场景，螺片细密，工艺精湛。" }
 };
+
+// ==================== 展厅图片数据 ====================
+// 一张墙面原图，可以对应多张详情图
+const exhibitionImages = [
+    {
+        id: 'image1',
+
+        // 墙上正常显示的原图
+        original: './images/bed.jpg',
+
+        // 点击后显示的详情图
+        details: [
+            './images/bed2.jpg',
+           // './images/bed-detail2.jpg'
+        ]
+    },
+
+    // 第二张图片，暂时可以先不使用
+    {
+        id: 'image2',
+        original: './images/chair.jpg',
+        details: [
+            './images/chair2.jpg',
+           // './images/image2-detail2.jpg'
+        ]
+    }
+];
+
+console.log('展厅图片数据:', exhibitionImages);
+
+// 检查展厅图片数据是否正确
+exhibitionImages.forEach(image => {
+    console.log(
+        `图片 ${image.id}：原图 = ${image.original}，详情图数量 = ${image.details.length}`
+    );
+});
+
+const imageBoards = []; // 保存所有图片展板
+const imageTextureLoader = new THREE.TextureLoader();
+let activeImageViewer = null;
+const IMAGE_OPEN_SPEED = 3.0;// 图片详情动画速度
+// ==================== 创建单张图片展板 ====================
+function createImagePlane(imagePath, position, name, visible = true) {
+
+    // 初始几何体
+    const geometry = new THREE.PlaneGeometry(2.4, 1.6);
+
+    // 图片材质
+    const material = new THREE.MeshBasicMaterial({
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+
+    // 设置位置
+    mesh.position.copy(position);
+
+    // 设置名称
+    mesh.name = name;
+
+    // 设置显示状态
+    mesh.visible = visible;
+
+    // 加载图片
+    imageTextureLoader.load(
+        imagePath,
+
+        (texture) => {
+
+            // 色彩空间
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            // 纹理过滤
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+
+            // 各向异性过滤
+            texture.anisotropy =
+                renderer.capabilities.getMaxAnisotropy();
+
+            // 设置材质纹理
+            material.map = texture;
+            material.needsUpdate = true;
+
+
+            // ==================== 根据图片比例调整尺寸 ====================
+
+            const imageWidth = texture.image.width;
+            const imageHeight = texture.image.height;
+
+            if (imageWidth && imageHeight) {
+
+                const aspect = imageWidth / imageHeight;
+
+                // 固定高度
+                const targetHeight = 1.6;
+
+                // 根据比例计算宽度
+                const targetWidth = targetHeight * aspect;
+
+                mesh.scale.set(
+                    targetWidth / 2.4,
+                    targetHeight / 1.6,
+                    1
+                );
+                if (mesh.userData.isExhibitionDetail) {
+                    mesh.userData.originalScale =
+                    mesh.scale.clone();
+    }
+            }
+
+            console.log(
+                `✅ 图片加载成功：${name}`,
+                `${imageWidth} × ${imageHeight}`
+            );
+        },
+
+        undefined,
+
+        (error) => {
+            console.error(
+                `❌ 图片加载失败：${imagePath}`,
+                error
+            );
+        }
+    );
+
+    // 加入场景
+    scene.add(mesh);
+
+    return mesh;
+}
+
+
+// ==================== 创建一组展厅图片 ====================
+function createImageBoard(imageData, position) {
+
+    // ------------------------------------------------
+    // 1. 创建墙面原图
+    // ------------------------------------------------
+
+    const board = createImagePlane(
+        imageData.original,
+        position,
+        `ExhibitionImage_${imageData.id}`,
+        true
+    );
+
+    // 原图标记
+    board.userData.isExhibitionImage = true;
+    board.userData.imageId = imageData.id;
+    board.userData.imageData = imageData;
+    board.userData.imageType = 'original';
+
+
+    // ------------------------------------------------
+    // 2. 创建详情图
+    // ------------------------------------------------
+
+    const detailBoards = [];
+
+    imageData.details.forEach((detailPath, index) => {
+
+        const detailBoard = createImagePlane(
+            detailPath,
+            position,
+            `ExhibitionDetail_${imageData.id}_${index + 1}`,
+            false
+        );
+
+        // 详情图自己的数据
+        detailBoard.userData.isExhibitionDetail = true;
+        detailBoard.userData.imageId = imageData.id;
+        detailBoard.userData.imageData = imageData;
+        detailBoard.userData.imageType = 'detail';
+        detailBoard.userData.detailIndex = index;
+
+        // 保存“墙面原始位置”
+        detailBoard.userData.originalPosition =
+            position.clone();
+
+        // 保存原始旋转
+        detailBoard.userData.originalRotation =
+            new THREE.Euler().copy(detailBoard.rotation);
+
+        // 保存原始缩放
+        detailBoard.userData.originalScale =
+            detailBoard.scale.clone();
+
+        detailBoards.push(detailBoard);
+
+        console.log(
+            `📌 创建详情图：${imageData.id} - detail${index + 1}`
+        );
+    });
+
+    // 3. 保存整组图片信息
+const imageGroupData = {
+    // 图片 ID
+    id: imageData.id,
+    // 原始数据
+    data: imageData,
+    // 墙面原图
+    board: board,
+    // 详情图
+    detailBoards: detailBoards,
+    // 是否处于详情查看状态
+    isDetailOpen: false,
+    // 是否正在播放动画
+    isAnimating: false,
+    // 动画进度
+    animationProgress: 0
+};
+
+
+    imageBoards.push(imageGroupData);
+
+
+    console.log(
+        `图片组创建完成：${imageData.id}`,
+        `详情图数量：${detailBoards.length}`
+    );
+
+
+    return board;
+}
+
+// image1 的位置
+createImageBoard(
+    exhibitionImages[0],
+    new THREE.Vector3(-3, 2.0, -3)
+);
+// image2 的位置
+createImageBoard(
+    exhibitionImages[1],
+    new THREE.Vector3(3, 2.0, -3)
+);
+// ==================== 打开图片详情 ====================
+
+function openImageDetails(imageGroup) {
+
+    // 防止重复点击
+    if (!imageGroup) return;
+    if (imageGroup.isAnimating) return;
+    if (imageGroup.isDetailOpen) return;
+
+    console.log('🖼️ 打开图片详情:', imageGroup.id);
+
+    // 当前正在查看的图片
+    activeImageViewer = imageGroup;
+
+    // 标记正在动画
+    imageGroup.isAnimating = true;
+    imageGroup.isDetailOpen = true;
+
+    // 原图隐藏
+    imageGroup.board.visible = false;
+
+    // 获取玩家/相机的世界位置
+    const cameraWorldPos = new THREE.Vector3();
+    camera.getWorldPosition(cameraWorldPos);
+
+    imageGroup.detailBoards.forEach((detailBoard, index) => {
+
+        // 显示详情图
+        detailBoard.visible = true;
+
+        // 从墙面位置开始
+        detailBoard.position.copy(
+            detailBoard.userData.originalPosition
+        );
+
+        // 恢复原始旋转
+        detailBoard.rotation.copy(
+            detailBoard.userData.originalRotation
+        );
+
+        // 从很小开始
+        detailBoard.scale
+            .copy(detailBoard.userData.originalScale)
+
+        detailBoard.userData.animationStart =
+            detailBoard.userData.originalPosition.clone();
+        const direction =
+            new THREE.Vector3()
+                .subVectors(cameraWorldPos, detailBoard.userData.originalPosition)
+                .normalize();
+const targetPosition =
+    cameraWorldPos.clone()
+        .sub(direction.multiplyScalar(2.0));
+
+targetPosition.y = cameraWorldPos.y;
+
+
+// ==================== 多张详情图横向排列 ====================
+
+const cameraRight =
+    new THREE.Vector3(1, 0, 0)
+        .applyQuaternion(camera.quaternion)
+        .normalize();
+
+const detailCount =
+    imageGroup.detailBoards.length;
+
+const spacing = 1.4;
+
+const offsetX =
+    (index - (detailCount - 1) / 2) * spacing;
+
+targetPosition.addScaledVector(
+    cameraRight,
+    offsetX
+);
+        detailBoard.userData.animationTarget =
+            targetPosition;
+            // 让详情图正面朝向玩家
+detailBoard.userData.animationTargetRotation =
+    new THREE.Quaternion();
+
+const lookMatrix =
+    new THREE.Matrix4();
+
+lookMatrix.lookAt(
+    targetPosition,
+    cameraWorldPos,
+    new THREE.Vector3(0, 1, 0)
+);
+
+detailBoard.userData.animationTargetRotation
+    .setFromRotationMatrix(lookMatrix);
+        detailBoard.userData.animationStartScale =
+            detailBoard.userData.originalScale.clone()
+                .multiplyScalar(0.1);
+        detailBoard.userData.animationTargetScale =
+            detailBoard.userData.originalScale.clone()
+                .multiplyScalar(1.0);
+    });
+    imageGroup.animationProgress = 0;
+}
+
+// ==================== 更新图片详情动画 ====================
+
+// ==================== 图片详情动画 ====================
+function updateImageViewer(delta) {
+
+    if (!activeImageViewer) return;
+
+    const imageGroup = activeImageViewer;
+
+    if (!imageGroup.isAnimating) return;
+
+    imageGroup.animationProgress +=
+        delta * IMAGE_OPEN_SPEED;
+
+    let t = imageGroup.animationProgress;
+
+    t = Math.min(t, 1);
+
+    // 缓出
+    const eased =
+        1 - Math.pow(1 - t, 3);
+
+    imageGroup.detailBoards.forEach((detailBoard) => {
+
+        const start =
+            detailBoard.userData.animationStart;
+
+        const target =
+            detailBoard.userData.animationTarget;
+
+        detailBoard.position.lerpVectors(
+            start,
+            target,
+            eased
+        );
+
+        const startScale =
+            detailBoard.userData.animationStartScale;
+
+        const targetScale =
+            detailBoard.userData.animationTargetScale;
+
+        detailBoard.scale.lerpVectors(
+            startScale,
+            targetScale,
+            eased
+        );
+    });
+
+    // ==================== 动画结束 ====================
+    if (t >= 1) {
+
+        imageGroup.isAnimating = false;
+        imageGroup.animationProgress = 1;
+
+        // ====================
+        // 正在关闭
+        // ====================
+        if (!imageGroup.isDetailOpen) {
+
+            imageGroup.detailBoards.forEach(
+                (detailBoard) => {
+
+                    detailBoard.visible = false;
+
+                    // 恢复原始旋转
+                    detailBoard.rotation.copy(
+                        detailBoard.userData.originalRotation
+                    );
+
+                    // 恢复原始尺寸
+                    detailBoard.scale.copy(
+                        detailBoard.userData.originalScale
+                    );
+                }
+            );
+
+            // 恢复墙上的原图
+            imageGroup.board.visible = true;
+
+            activeImageViewer = null;
+
+            console.log(
+                '✅ 图片详情关闭完成:',
+                imageGroup.id
+            );
+
+        }
+
+        // ====================
+        // 正在打开
+        // ====================
+        else {
+
+            console.log(
+                '✅ 图片详情打开完成:',
+                imageGroup.id
+            );
+        }
+    }
+}
+
+// ==================== 关闭图片详情 ====================
+function closeImageDetails(imageGroup) {
+
+    if (!imageGroup) return;
+    if (imageGroup.isAnimating) return;
+    if (!imageGroup.isDetailOpen) return;
+
+    console.log('🖼️ 关闭图片详情:', imageGroup.id);
+
+imageGroup.isAnimating = true;
+imageGroup.isDetailOpen = false;
+imageGroup.animationProgress = 0;
+
+    imageGroup.detailBoards.forEach((detailBoard) => {
+
+        // 当前的位置作为关闭动画起点
+        detailBoard.userData.animationStart =
+            detailBoard.position.clone();
+
+        // 回到墙面原始位置
+        detailBoard.userData.animationTarget =
+            detailBoard.userData.originalPosition.clone();
+
+        // 当前大小作为起点
+        detailBoard.userData.animationStartScale =
+            detailBoard.scale.clone();
+
+        // 缩小到原始尺寸的 10%
+        detailBoard.userData.animationTargetScale =
+            detailBoard.userData.originalScale
+                .clone()
+                .multiplyScalar(0.1);
+    });
+
+    // 注意：
+    // 这里暂时不要立刻显示原图
+    // 等详情图完全缩回去之后再恢复原图
+}
 
 const artifactItems = [];
 
@@ -411,14 +972,13 @@ function wrapText(ctx, text, x, y, maxW, lineHeight) {
     }
     ctx.fillText(line, x, y);
 }
-
 // ==================== 加载模型 ====================
 // 获取加载面板元素（新增）
 const loadingText = document.getElementById('loading-text');
 const loadingDetail = document.getElementById('loading-detail');
 const loadingPanel = document.getElementById('loading-panel');
 
-loader.load('models/test.glb',
+loader.load('models/tes.glb',
     // ========== 1. 加载成功 ==========
     (gltf) => {
         loadingText.textContent = '✅ 模型加载完成';
@@ -428,20 +988,33 @@ loader.load('models/test.glb',
         model.position.set(0, 0, 0);
         model.scale.set(1, 1, 1);
         scene.add(model);
-
-
         const allMeshNames = [];
         model.traverse(c => {
             if (c.isMesh) {
                 allMeshNames.push(c.name);
                 c.castShadow = true;
                 c.receiveShadow = true;
+                // ========== 纹理过滤与色彩空间修复（消除摩尔纹）==========
+                if (c.material) {
+                    const materials = Array.isArray(c.material) ? c.material : [c.material];
+                    materials.forEach(mat => {
+                        for (const key in mat) {
+                            const value = mat[key];
+                            if (value && value.isTexture) {
+                                value.minFilter = THREE.LinearMipmapLinearFilter;
+                                value.magFilter = THREE.LinearFilter;
+                                value.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                                value.colorSpace = THREE.SRGBColorSpace;
+                            }
+                        }
+                    });
+                }
+                // =========================================================
             }
         });
         console.log('===== 模型子物体清单 =====');
         console.log(allMeshNames.join(', '));
         console.log('==========================');
-
     
         const detectedArtifacts = [];
 const presetKeys = Object.keys(artifactsInfo);
@@ -528,27 +1101,26 @@ model.children.forEach(root => {
         }
 
         console.log(`模型加载完成，共 ${artifactItems.length} 个文物`);
-    },
-    (xhr) => {
- //       if (xhr.total) console.log(`加载进度: ${(xhr.loaded / xhr.total * 100).toFixed(1)}%`);
-   // },
-   // (err) => console.error('模型加载失败:', err)
 
- // 2秒后隐藏加载面板
-        setTimeout(() => {
-            loadingPanel.style.display = 'none';
-        }, 2000);
+        loadingText.textContent = '✅ 模型加载完成';
+loadingDetail.textContent = '场景已就绪';
+
+// 1秒后隐藏加载界面
+setTimeout(() => {
+    loadingPanel.style.display = 'none';
+}, 1000);
     },
+  
+
 
     // ========== 2. 加载进度（新增）==========
     (xhr) => {
         if (xhr.total) {
-            const percent = (xhr.loaded / xhr.total * 100).toFixed(0);
-            loadingText.textContent = `⏳ 加载模型... ${percent}%`;
-            loadingDetail.textContent = `${(xhr.loaded/1024/1024).toFixed(1)} MB / ${(xhr.total/1024/1024).toFixed(1)} MB`;
-        } else {
-            loadingText.textContent = '⏳ 加载中...';
+            const percent = (xhr.loaded / xhr.total * 100).toFixed(1);
+            loadingText.textContent = '⏳ 正在加载模型';
+            loadingDetail.textContent = `${percent}%`;
         }
+       
     },
 
     // ========== 3. 加载失败（新增）==========
@@ -865,6 +1437,55 @@ function findHitItem(controller) {
     return hits[0].object._artifactItem;  // 返回整个文物，不是单个 Mesh
 }
 
+// ==================== 查找控制器射线命中的展厅图片 ====================
+function findHitImage(controller) {
+
+    const raycaster =
+        new THREE.Raycaster();
+
+    const origin =
+        new THREE.Vector3();
+
+    const direction =
+        new THREE.Vector3();
+
+    controller.getWorldPosition(origin);
+
+    direction.set(0, 0, -1);
+
+    direction.applyQuaternion(
+        controller.getWorldQuaternion(
+            new THREE.Quaternion()
+        )
+    );
+
+    raycaster.set(
+        origin,
+        direction
+    );
+
+    const imageMeshes =
+        imageBoards.map(
+            item => item.board
+        );
+
+    const hits =
+        raycaster.intersectObjects(
+            imageMeshes,
+            false
+        );
+
+    if (hits.length === 0) {
+        return null;
+    }
+
+    const hitBoard =
+        hits[0].object;
+
+    return imageBoards.find(
+        item => item.board === hitBoard
+    ) || null;
+}
 // 检测手柄是否指着视频屏幕
 function isPointingVideo(controller) {
     const rc = new THREE.Raycaster();
@@ -889,24 +1510,87 @@ function toggleVideo() {
 }
 
 function onVRSelectStart(event) {
+
     if (!vrState.isPresenting) return;
+
     const controller = event.target;
 
-    if (isPointingVideo(controller)) {
-        toggleVideo();
+
+    // ====================
+    // 正在查看图片详情
+    // 任意控制器按键 = 关闭
+    // ====================
+
+    if (activeImageViewer) {
+
+        if (!activeImageViewer.isAnimating) {
+
+            console.log(
+                '🥽 VR 退出图片详情'
+            );
+
+            closeImageDetails(
+                activeImageViewer
+            );
+        }
+
         return;
     }
+
+
+    // ====================
+    // 视频
+    // ====================
+
+    if (isPointingVideo(controller)) {
+
+        toggleVideo();
+
+        return;
+    }
+
+
+    // ====================
+    // 检查是否点击展厅图片
+    // ====================
+
+    const imageGroup =
+        findHitImage(controller);
+
+    if (imageGroup) {
+
+        console.log(
+            '🥽 VR 点击图片:',
+            imageGroup.id
+        );
+
+        openImageDetails(
+            imageGroup
+        );
+
+        return;
+    }
+
+
+    // ====================
+    // 原来的物品抓取逻辑
+    // ====================
 
     if (heldItem) {
+
         dropItem();
+
         return;
     }
 
-    const item = findHitItem(controller);
+
+    const item =
+        findHitItem(controller);
+
     if (!item) return;
 
-    // 记录是哪个手柄抓取的
     heldController = controller;
+
     grabItem(item);
 }
 
@@ -984,13 +1668,16 @@ function animate() {
     const delta = Math.min(1 / 30, (now - lastTime) / 1000);
     lastTime = now;
 
-    if (vrState.isPresenting) {
-        updateVR(delta);
-    } else {
-        updateDesktop(delta);
-    }
+if (vrState.isPresenting) {
+    updateVR(delta);
+} else {
+    updateDesktop(delta);
+}
 
-    updateInteraction();
+// 图片详情动画
+updateImageViewer(delta);
+
+updateInteraction();
 
     debugDiv.textContent = debugLines.join('\n');
     if (debugSprite && debugCtx) {
